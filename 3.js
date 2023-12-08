@@ -1,48 +1,56 @@
 const crypto = require('crypto');
 
-
 function formatPemKey(pemKey) {
     return pemKey
-        .replace("-----BEGIN PRIVATE KEY-----", "")
-        .replace("-----END PRIVATE KEY-----", "")
+        .replace("-----BEGIN PUBLIC KEY-----", "")
+        .replace("-----END PUBLIC KEY-----", "")
         .replace(/\s/g, "");
 }
 
-async function decryptWithPrivateKey(encryptedData, privateKey_) {
+async function importPublicKey(pemKey) {
     try {
-        const formatKey = formatPemKey(privateKey_);
+        const formattedKey = formatPemKey(pemKey);
 
-        const binaryKey = atob(formatKey);
-
+        const binaryKey = atob(formattedKey);
         const keyBytes = new Uint8Array(binaryKey.length);
 
         for (let i = 0; i < binaryKey.length; i++) {
             keyBytes[i] = binaryKey.charCodeAt(i);
         }
 
-        const encryptedBuffer = new Uint8Array(
-            atob(encryptedData)
-                .split("")
-                .map((char) => char.charCodeAt(0))
-        );
-
         const cryptoKey = await crypto.subtle.importKey(
-            "pkcs8",
+            "spki",
             keyBytes,
             { name: "RSA-OAEP", hash: { name: "SHA-256" } },
             false,
-            ["decrypt"]
+            ["encrypt"]
         );
+        return cryptoKey;
+    } catch (error) {
+        console.error("Public key import error:", error);
+    }
+}
 
-        const decryptedBuffer = await crypto.subtle.decrypt(
+async function encryptWithPublicKey(message, publicKey) {
+    try {
+
+        const encoder = new TextEncoder();
+
+        const dataBuffer = encoder.encode(message);
+
+        const cryptoKey = await importPublicKey(publicKey);
+
+        const encryptedBuffer = await crypto.subtle.encrypt(
             { name: "RSA-OAEP" },
             cryptoKey,
-            encryptedBuffer
+            dataBuffer
         );
 
-        const decryptedData = new TextDecoder().decode(decryptedBuffer);
+        const encryptedData = btoa(
+            String.fromCharCode.apply(null, new Uint8Array(encryptedBuffer))
+        );
 
-        return decryptedData
+        return encryptedData
 
         // console.log(encryptedBuffer, "encryptedBuffer")
     } catch (error) {
@@ -51,39 +59,22 @@ async function decryptWithPrivateKey(encryptedData, privateKey_) {
 }
 
 
-const privateKey = `
------BEGIN PRIVATE KEY-----
-MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDNw3zLwybUFatU
-KHZrCVKlvu7absUiMBYj2Zdb723HRHzBUD3+yswjPKwcpNSHnssxe1ibgefKfgdl
-v6UW+3EC+KvJtMpmCTWAH3wt4LAG4p+LDjy8qdb8ZpgSnpjgMoo86Pfgbjk7qpZb
-f43G/F06W+IfvTsP0TqlyhENyo7qU9HGOlcVqicggnyRtL57OLZWCxFjBQ4ySFab
-X4MXj0/6rf7t+RNFTWP5DMHtW3FJuO5nU0S0vHRVpUKhW7U1MZjzAE16+uXTaE4T
-LANSvPf5bUCHuVyr0NX3mUKKEekrIuoLbkrUULCpYpjSdFzxb5u0hk5F3SGeP74b
-EkhNQfq9AgMBAAECggEAAgH/1D8twFEL0HDqouW+5DYmP4RoMQq2FJh5dSCzegfN
-jddaG4PgFRHw/gCPwFkI041IEpBkciHjsZb6pexDMIu7pWa5uOArIPptrEbugMqy
-UtmLNy4TFnhr0HayuDFWDv0Y+hwpO89Q00i92ey5finKXZProR5iC58apn9NALVX
-LXX2y3nvZMK2l73rVOvNTVjuj+EmcWNk0ak4a7lxVzwOsMsYu8yil2ui4AHkYGgF
-MbKAW+y1lT9AoJTPeRMrWToiQIk4TTD39G7CdI74/A7xj962x6rbAGHsaSw9pjl6
-uBAjp57ZzUiZsF2Kj8uOG8HDZ6Xz8riZNsJxT2e7MwKBgQD8Hor39Aat4LUBgxp4
-3okTSSEBiHpHlEKB9hzw/77ahPx1wXnIDZzmYi+1hR+V8KTk2xGAF8tURoYz286Z
-8GjFmVZTKu3pRJTWVZEoYSXFLBzxDHIhN8yJwWkS9G+ojMaAWqzIo44nIY/+sA1o
-ZBJre2ZkdZhhTYKNU8VTXeHmxwKBgQDQ7kiWzHrk2uGOFwEfcjMM35XVFU2ZXdaC
-wneUUR0Xty920bYgOb5YVoWpePCk/HJ4jC261cJJG8wLCQdhXow1d+UIQXNU3Mdm
-Xdgl4AF218AmUu+0Mek1f6z3TVEPZN1WDuLY9E96dwx1Ub9A4JUSEyVz9PQ/8gvg
-xdY8c6l+WwKBgFX54HAwEnsHLxLF76gaU2p1PME2FmUEhS2mjTYOMLp6MVHC2dHD
-+qaCAz0Gmb/bIZA9uJkTBC7IIgnbQngyiLgh01NnR1yOG6d/5JF9l5DGu1PkZ6M2
-URUFFNz26ID1CNhKk7OUOuzTQDSdOuVHgxSOL1vA0mcUNJoXYCpO0LOPAoGAbV+Q
-WIELBKsg0MVyLQgXeXHCeh4A1XyuQx2Sg+5CkJuxGT6HXS9dWdlRd3p8X6JYOosH
-lXs5jhQjKNO9LVfVhlgRadT5jz9Uk14lPQ6bNZ+UU3uvSGGod/0yivPKr4hZ5ic8
-0d5zjOStfO0iddAbua6UOLPO+Xq4hR6MHHFgFWkCgYEAii1tvkCiP9e6q9+wAw4U
-c5sA246YbYrKOrhsLxUsY+Q7N51fqNnt5vKKbVZhy+NytaXuRYGJdjpxdA0ISPLa
-dU/hGlZwB2aPxcBKKDpJqOaUpkHDnUWyZoPXy6mshbaCRK3ATitAdDC40CK8bCrF
-RVYoFdr1NZyQghoIdvT4oJ0=
------END PRIVATE KEY-----
+const publicKey = `
+-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmcjY9Y59h3mRtMN2n/vh
+DfO7/0aadPPSvXSc+pJUq23Kc96AQUTApv+wfoQmAByyWmX3SQ2gWK5goxaRYlCK
+XSjgGUfPbt2oAZ8AnKDOjG4qti+gJl647rVHcfgQQ3ehErK6hLasHvahtlOkfkCh
+aS6XHzpjdUoQ28EiyiTe8C3MtGPojoQSorxpls9/ogrPdf7mFKO5uFKxCijjv0kY
+Duj/UFkvQj3QITAwOSIqgxNt197KHM+MeDOdfzbVkjoshWVgQKxYGrh6V9GSegdC
+iNPHJ86WZc6hNp1WvCP/zSjyYhrvGQaoOAVo2Yu0b8bbpKfWZ+P2J09Yz1U6JlLW
+/QIDAQAB
+-----END PUBLIC KEY-----
 `
-const encryptedData = `SJrcI3ykqF+1KLcVTToZUf8m3z5xwH2n6Dnx0ytRqtkmr0aFtQ208JIJ0w3ByXlVBXhOQTGG7IzUVh882W8nyh7+2JFYCgYsIDnRriz/aIu9OYTJO2C6VtjEXnI2jW+tu2E3kt61CrLZlqrtInEmiLYRFHun0dj+UQseI8IVWYcBjki6maq+G//0tpXzgyEa0p4ijCIFBZXH21lFjstblD/8HG3lbbhEsGIsQ3IvxBT47mUuuSO2/LWYf/J9XqkJtSwX17XxUOxf7gidpv8tFnIajgFH6A3EapTSMdLFP9msvgHQseLwi6TOXzcJLYGLX2+ovjKR4Nb04TCYwURB9A==`
 
-decryptWithPrivateKey(encryptedData, privateKey)
+
+const message = "namanya siapa dia"
+
+encryptWithPublicKey(message, publicKey)
     .then(result => {
         console.log(result)
     })
